@@ -854,64 +854,66 @@ class TestBlkid(CiTestCase):
         )
 
 
-@mock.patch("cloudinit.subp.which")
-@mock.patch("cloudinit.subp.subp")
+@mock.patch("cloudinit.util.subp.which")
+@mock.patch("cloudinit.util.subp.subp")
 class TestUdevadmSettle(CiTestCase):
-    def test_with_no_params(self, m_which, m_subp):
+    def test_with_no_params(self, m_subp, m_which):
         """called with no parameters."""
         m_which.side_effect = lambda m: m in ("udevadm",)
         util.udevadm_settle()
-        m_subp.called_once_with(mock.call(["udevadm", "settle"]))
+        m_subp.assert_called_once_with(["udevadm", "settle"])
 
-    def test_udevadm_not_present(self, m_which, m_subp):
+    def test_udevadm_not_present(self, m_subp, m_which):
         """where udevadm program does not exist should not invoke subp."""
         m_which.side_effect = lambda m: m in ("",)
         util.udevadm_settle()
-        m_subp.called_once_with(["which", "udevadm"])
+        m_which.assert_called_once_with("udevadm")
+        m_subp.assert_not_called()
 
-    def test_with_exists_and_not_exists(self, m_which, m_subp):
+    def test_with_exists_and_not_exists(self, m_subp, m_which):
         """with exists=file where file does not exist should invoke subp."""
         m_which.side_effect = lambda m: m in ("udevadm",)
         mydev = self.tmp_path("mydev")
         util.udevadm_settle(exists=mydev)
-        m_subp.called_once_with(
+        m_subp.assert_called_once_with(
             ["udevadm", "settle", "--exit-if-exists=%s" % mydev]
         )
 
-    def test_with_exists_and_file_exists(self, m_which, m_subp):
+    def test_with_exists_and_file_exists(self, m_subp, m_which):
         """with exists=file where file does exist should only invoke subp
         once for 'which' call."""
         m_which.side_effect = lambda m: m in ("udevadm",)
         mydev = self.tmp_path("mydev")
         util.write_file(mydev, "foo\n")
         util.udevadm_settle(exists=mydev)
-        m_subp.called_once_with(["which", "udevadm"])
+        m_which.assert_called_once_with("udevadm")
+        m_subp.assert_not_called()
 
-    def test_with_timeout_int(self, m_which, m_subp):
+    def test_with_timeout_int(self, m_subp, m_which):
         """timeout can be an integer."""
         m_which.side_effect = lambda m: m in ("udevadm",)
         timeout = 9
         util.udevadm_settle(timeout=timeout)
-        m_subp.called_once_with(
+        m_subp.assert_called_once_with(
             ["udevadm", "settle", "--timeout=%s" % timeout]
         )
 
-    def test_with_timeout_string(self, m_which, m_subp):
+    def test_with_timeout_string(self, m_subp, m_which):
         """timeout can be a string."""
         m_which.side_effect = lambda m: m in ("udevadm",)
         timeout = "555"
         util.udevadm_settle(timeout=timeout)
-        m_subp.called_once_with(
+        m_subp.assert_called_once_with(
             ["udevadm", "settle", "--timeout=%s" % timeout]
         )
 
-    def test_with_exists_and_timeout(self, m_which, m_subp):
+    def test_with_exists_and_timeout(self, m_subp, m_which):
         """test call with both exists and timeout."""
         m_which.side_effect = lambda m: m in ("udevadm",)
         mydev = self.tmp_path("mydev")
         timeout = "3"
-        util.udevadm_settle(exists=mydev)
-        m_subp.called_once_with(
+        util.udevadm_settle(exists=mydev, timeout=timeout)
+        m_subp.assert_called_once_with(
             [
                 "udevadm",
                 "settle",
@@ -920,7 +922,7 @@ class TestUdevadmSettle(CiTestCase):
             ]
         )
 
-    def test_subp_exception_raises_to_caller(self, m_which, m_subp):
+    def test_subp_exception_raises_to_caller(self, m_subp, m_which):
         m_which.side_effect = lambda m: m in ("udevadm",)
         m_subp.side_effect = subp.ProcessExecutionError("BOOM")
         self.assertRaises(subp.ProcessExecutionError, util.udevadm_settle)
@@ -1967,6 +1969,31 @@ class TestGetCmdline(helpers.TestCase):
         ):
             ret = util.get_cmdline()
         self.assertEqual("abcd 123", ret)
+
+
+class TestFipsEnabled:
+    @pytest.mark.parametrize(
+        "fips_enabled_content,expected",
+        (
+            pytest.param(None, False, id="false_when_no_fips_enabled_file"),
+            pytest.param("0\n", False, id="false_when_fips_disabled"),
+            pytest.param("1\n", True, id="true_when_fips_enabled"),
+            pytest.param("1", True, id="true_when_fips_enabled_no_newline"),
+        ),
+    )
+    @mock.patch(M_PATH + "load_file")
+    def test_fips_enabled_based_on_proc_crypto(
+        self, load_file, fips_enabled_content, expected, tmpdir
+    ):
+        def fake_load_file(path):
+            assert path == "/proc/sys/crypto/fips_enabled"
+            if fips_enabled_content is None:
+                raise IOError("No file exists Bob")
+            return fips_enabled_content
+
+        load_file.side_effect = fake_load_file
+
+        assert expected is util.fips_enabled()
 
 
 class TestLoadYaml(helpers.CiTestCase):
@@ -3062,3 +3089,24 @@ class TestResolvable:
         assert util.is_resolvable("http://169.254.169.254/") is True
         assert util.is_resolvable("http://[fd00:ec2::254]/") is True
         assert not m_getaddr.called
+
+
+class TestHashBuffer:
+    def test_in_memory(self):
+        buf = io.BytesIO(b"hola")
+        assert (
+            util.hash_buffer(buf)
+            == b"\x99\x80\x0b\x85\xd38>:/\xb4^\xb7\xd0\x06jHy\xa9\xda\xd0"
+        )
+
+    def test_file(self, tmp_path):
+        content = b"hola"
+        file = tmp_path / "file.txt"
+        with file.open("wb") as f:
+            f.write(content)
+
+        with file.open("rb") as f:
+            assert (
+                util.hash_buffer(f)
+                == b"\x99\x80\x0b\x85\xd38>:/\xb4^\xb7\xd0\x06jHy\xa9\xda\xd0"
+            )
