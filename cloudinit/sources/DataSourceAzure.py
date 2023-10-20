@@ -600,9 +600,22 @@ class DataSourceAzure(sources.DataSource):
             md, userdata_raw, cfg, files = self._reprovision()
             # fetch metadata again as it has changed after reprovisioning
             imds_md = self.get_metadata_from_imds(report_failure=True)
+            imds_ppstype = self._ppstype_from_imds(imds_md)
+            if imds_ppstype != PPSType.NONE.value:
+                self._report_failure(
+                    errors.ReportableErrorImdsInvalidMetadata(
+                        key="extended.compute.ppsType", value=None
+                    )
+                )
 
         # Report errors if IMDS network configuration is missing data.
-        self.validate_imds_network_metadata(imds_md=imds_md)
+        imds_network = self.validate_imds_network_metadata(imds_md=imds_md)
+        if not imds_network:
+            self._report_failure(
+                errors.ReportableErrorImdsInvalidMetadata(
+                    key="network", value=None
+                )
+            )
 
         self.seed = ovf_source or "IMDS"
         crawled_data.update(
@@ -613,16 +626,44 @@ class DataSourceAzure(sources.DataSource):
                 "userdata_raw": userdata_raw,
             }
         )
+
+        imds_compute = imds_md.get("compute")
+        if not imds_compute:
+            self._report_failure(
+                errors.ReportableErrorImdsInvalidMetadata(
+                    key="compute", value=None
+                )
+            )
+        else:
+            if not imds_compute.get("osProfile"):
+                self._report_failure(
+                    errors.ReportableErrorImdsInvalidMetadata(
+                        key="compute.osProfile", value=None
+                    )
+                )
+
         imds_username = _username_from_imds(imds_md)
         imds_hostname = _hostname_from_imds(imds_md)
         imds_disable_password = _disable_password_from_imds(imds_md)
         if imds_username:
             LOG.debug("Username retrieved from IMDS: %s", imds_username)
             cfg["system_info"]["default_user"]["name"] = imds_username
+        else:
+            self._report_failure(
+                errors.ReportableErrorImdsInvalidMetadata(
+                    key="compute.osProfile.adminUsername", value=None
+                )
+            )
         if imds_hostname:
             LOG.debug("Hostname retrieved from IMDS: %s", imds_hostname)
             crawled_data["metadata"]["local-hostname"] = imds_hostname
-        if imds_disable_password:
+        else:
+            self._report_failure(
+                errors.ReportableErrorImdsInvalidMetadata(
+                    key="compute.osProfile.computerName", value=None
+                )
+            )
+        if imds_disable_password is not None:
             LOG.debug(
                 "Disable password retrieved from IMDS: %s",
                 imds_disable_password,
@@ -630,6 +671,13 @@ class DataSourceAzure(sources.DataSource):
             crawled_data["metadata"][
                 "disable_password"
             ] = imds_disable_password
+        else:
+            self._report_failure(
+                errors.ReportableErrorImdsInvalidMetadata(
+                    key="compute.osProfile.disablePasswordAuthentication",
+                    value=None,
+                )
+            )
 
         if self.seed == "IMDS" and not crawled_data["files"]:
             try:
@@ -709,6 +757,13 @@ class DataSourceAzure(sources.DataSource):
             error_string = str(error)
             error_report = errors.ReportableErrorImdsMetadataParsingException(
                 exception=error
+            )
+        except KeyError as error:
+            key = error.args[0]
+            value = error.args[1]
+            error_string = f"invalid value for {key}: {value}"
+            error_report = errors.ReportableErrorImdsInvalidMetadata(
+                key=key, value=value
             )
 
         self._report_failure(error_report, host_only=not report_failure)

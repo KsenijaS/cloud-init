@@ -141,13 +141,18 @@ def _fetch_metadata(
     metadata = _fetch_url(url, retry_deadline=retry_deadline)
 
     try:
-        return util.load_json(metadata)
+        imds_md = util.load_json(metadata)
     except ValueError as error:
         report_diagnostic_event(
             "Failed to parse metadata from IMDS: %s" % error,
             logger_func=LOG.warning,
         )
         raise
+    for key in ["compute", "network"]:
+        val = imds_md.get(key)
+        if not val:
+            raise KeyError(key, val)
+    return imds_md
 
 
 def fetch_metadata_with_api_fallback(retry_deadline: float) -> Dict:
