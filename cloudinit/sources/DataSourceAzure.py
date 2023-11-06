@@ -648,11 +648,21 @@ class DataSourceAzure(sources.DataSource):
             # fetch metadata again as it has changed after reprovisioning
             imds_md = self.get_metadata_from_imds(report_failure=True)
 
+            # validate imds pps metadata
+            imds_ppstype = self._ppstype_from_imds(imds_md)
+            if imds_ppstype != PPSType.NONE.value:
+                self._report_failure(
+                    errors.ReportableErrorImdsInvalidMetadata(
+                        key="extended.compute.ppsType", value=imds_ppstype
+                    )
+                )
+
         # Report errors if IMDS network configuration is missing data.
         self.validate_imds_network_metadata(imds_md=imds_md)
 
         # Report errors if IMDS compute configuration is missing
-        self.validate_imds_compute_metadata(imds_md=imds_md)
+        #if imds_md:
+        #    self.validate_imds_compute_metadata(imds_md=imds_md)
 
         self.seed = ovf_source or "IMDS"
         crawled_data.update(
@@ -720,6 +730,7 @@ class DataSourceAzure(sources.DataSource):
             crawled_data["metadata"]["random_seed"] = seed
         crawled_data["metadata"]["instance-id"] = self._iid()
 
+        self._negotiated = False
         if self._negotiated is False and self._is_ephemeral_networking_up():
             # Report ready and fetch public-keys from Wireserver, if required.
             pubkey_info = self._determine_wireserver_pubkey_info(
@@ -1527,14 +1538,14 @@ class DataSourceAzure(sources.DataSource):
     @azure_ds_telemetry_reporter
     def validate_imds_compute_metadata(self, imds_md: dict) -> bool:
         # validate imds pps metadata
-        imds_ppstype = self._ppstype_from_imds(imds_md)
-        if imds_ppstype != PPSType.NONE.value:
-            self._report_failure(
-                errors.ReportableErrorImdsInvalidMetadata(
-                    key="extended.compute.ppsType", value=imds_ppstype
-                )
-            )
-            return False
+        # imds_ppstype = self._ppstype_from_imds(imds_md)
+        # if imds_ppstype != PPSType.RUNNING.value:
+        #     self._report_failure(
+        #         errors.ReportableErrorImdsInvalidMetadata(
+        #             key="extended.compute.ppsType", value=imds_ppstype
+        #         )
+        #     )
+        #     return False
 
         # validate imds compute metadata
         try:

@@ -461,6 +461,11 @@ NETWORK_METADATA = {
         "name": "my-hostname",
         "offer": "UbuntuServer",
         "osType": "Linux",
+        "osProfile": {
+            "adminUsername": "",
+            "computeName": "",
+            "disablePasswordAuthentication": "true",
+        },
         "placementGroupId": "",
         "platformFaultDomain": "0",
         "platformUpdateDomain": "0",
@@ -493,6 +498,7 @@ NETWORK_METADATA = {
             }
         ]
     },
+    "disable_password": "true",
 }
 
 SECONDARY_INTERFACE = {
@@ -1455,6 +1461,8 @@ scbus-1 on xpt0 bus 0
             b"<ns1:HostName>myhost</ns1:HostName>",
             crawled_metadata["files"]["ovf-env.xml"],
         )
+        print("metadata", crawled_metadata["metadata"])
+        print("expected metadata", expected_metadata)
         self.assertEqual(crawled_metadata["metadata"], expected_metadata)
         self.assertEqual(crawled_metadata["userdata_raw"], b"FOOBAR")
         self.assertEqual(dsrc.userdata_raw, None)
@@ -2024,7 +2032,9 @@ scbus-1 on xpt0 bus 0
         self.assertTrue(ret)
 
     def test_fabric_data_included_in_metadata(self):
-        dsrc = self._get_ds({"ovfcontent": construct_ovf_env()})
+        dsrc = self._get_ds(
+            {"ovfcontent": construct_ovf_env(preprovisioned_vm=False)}
+        )
         self.m_get_metadata_from_fabric.return_value = ["ssh-key-value"]
         ret = self._get_and_setup(dsrc)
         self.assertTrue(ret)
@@ -3727,6 +3737,7 @@ class TestProvisioning:
         assert self.azure_ds._is_ephemeral_networking_up() is False
 
         # Verify DMI usage.
+        print("dmi read", self.mock_dmi_read_dmi_data.mock_calls)
         assert self.mock_dmi_read_dmi_data.mock_calls == [
             mock.call("chassis-asset-tag"),
             mock.call("system-uuid"),
