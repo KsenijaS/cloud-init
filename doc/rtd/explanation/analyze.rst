@@ -27,8 +27,8 @@ The :command:`analyze` command requires one of the four subcommands:
 Availability
 ============
 
-The :command:`analyze` subcommand is generally available across all
-distributions, with the exception of Gentoo and FreeBSD.
+The :command:`analyze boot` subcommand only works on operating systems that
+use `systemd`.
 
 Subcommands
 ===========
@@ -78,7 +78,6 @@ Example output:
         00.00100s (modules-final/config-scripts_vendor)
         00.00100s (modules-final/config-scripts_per_once)
         00.00100s (modules-final/config-salt_minion)
-        00.00100s (modules-final/config-rightscale_userdata)
         00.00100s (modules-final/config-phone_home)
         00.00100s (modules-final/config-package_update_upgrade_install)
         00.00100s (modules-final/config-fan)
@@ -92,7 +91,6 @@ Example output:
         00.00100s (modules-config/config-apt_pipelining)
         00.00100s (init-network/config-write_files)
         00.00100s (init-network/config-seed_random)
-        00.00100s (init-network/config-migrator)
         00.00000s (modules-final/config-ubuntu_drivers)
         00.00000s (modules-final/config-scripts_user)
         00.00000s (modules-final/config-scripts_per_instance)

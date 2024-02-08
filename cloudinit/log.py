@@ -22,17 +22,12 @@ from contextlib import suppress
 from typing import DefaultDict
 
 DEFAULT_LOG_FORMAT = "%(asctime)s - %(filename)s[%(levelname)s]: %(message)s"
+DEPRECATED = 35
 
 
 def setup_basic_logging(level=logging.DEBUG, formatter=None):
     formatter = formatter or logging.Formatter(DEFAULT_LOG_FORMAT)
     root = logging.getLogger()
-    for handler in root.handlers:
-        if hasattr(handler, "stream") and hasattr(handler.stream, "name"):
-            if handler.stream.name == "<stderr>":
-                handler.setLevel(level)
-                return
-    # Didn't have an existing stderr handler; create a new handler
     console = logging.StreamHandler(sys.stderr)
     console.setFormatter(formatter)
     console.setLevel(level)
@@ -50,7 +45,7 @@ def flush_loggers(root):
     flush_loggers(root.parent)
 
 
-def define_deprecation_logger(lvl=35):
+def define_deprecation_logger(lvl=DEPRECATED):
     logging.addLevelName(lvl, "DEPRECATED")
 
     def deprecated(self, message, *args, **kwargs):
@@ -151,11 +146,11 @@ def reset_logging():
 
 def setup_backup_logging():
     """In the event that internal logging exception occurs and logging is not
-    possible for some reason, make a desparate final attempt to log to stderr
+    possible for some reason, make a desperate final attempt to log to stderr
     which may ease debugging.
     """
     fallback_handler = logging.StreamHandler(sys.stderr)
-    fallback_handler.handleError = lambda self, record: None
+    fallback_handler.handleError = lambda record: None
     fallback_handler.setFormatter(
         logging.Formatter(
             "FALLBACK: %(asctime)s - %(filename)s[%(levelname)s]: %(message)s"
@@ -171,6 +166,18 @@ def setup_backup_logging():
     logging.Handler.handleError = handleError
 
 
+class CloudInitLogRecord(logging.LogRecord):
+    """reporting the filename as __init__.py isn't very useful in logs
+
+    if the filename is __init__.py, use the parent directory as the filename
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "__init__.py" == self.filename:
+            self.filename = os.path.basename(os.path.dirname(self.pathname))
+
+
 def configure_root_logger():
     """Customize the root logger for cloud-init"""
 
@@ -184,3 +191,6 @@ def configure_root_logger():
     handler = LogExporter()
     handler.setLevel(logging.WARN)
     logging.getLogger().addHandler(handler)
+
+    # LogRecord allows us to report more useful information than __init__.py
+    logging.setLogRecordFactory(CloudInitLogRecord)

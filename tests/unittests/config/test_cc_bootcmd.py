@@ -92,7 +92,7 @@ class TestBootcmd(CiTestCase):
             with self.allow_subp(["/bin/sh"]):
                 handle("cc_bootcmd", valid_config, cc, [])
         self.assertEqual(
-            my_id + " iid-datasource-none\n", util.load_file(out_file)
+            my_id + " iid-datasource-none\n", util.load_text_file(out_file)
         )
 
     def test_handler_runs_bootcmd_script_with_error(self):
@@ -145,10 +145,8 @@ class TestBootCMDSchema:
                     ]
                 },
                 "Cloud config schema errors: bootcmd.1: 20 is not of type"
-                " 'array', bootcmd.1: 20 is not valid under any of the given"
-                " schemas, bootcmd.3: {'a': 'n'} is not of type 'array',"
-                " bootcmd.3: {'a': 'n'} is not valid under any of the given"
-                " schemas",
+                " 'array', bootcmd.1: 20 is not of type 'string', bootcmd.3:"
+                " {'a': 'n'} is not of type 'array'",
             ),
         ),
     )

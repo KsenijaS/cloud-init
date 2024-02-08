@@ -210,8 +210,11 @@ def parse_pip_requirements(requirements_path):
             dep = line.split(";")[0]
 
             # remove version requirements
-            if re.search("[>=.<]+", dep):
-                dep_names.append(re.split(r"[>=.<]+", dep)[0].strip())
+            version_comparison = re.compile(r"[~!>=.<]+")
+            if version_comparison.search(dep):
+                dep_names.append(
+                    version_comparison.split(dep)[0].strip()
+                )
             else:
                 dep_names.append(dep)
     return dep_names
@@ -221,8 +224,8 @@ def translate_pip_to_system_pkg(pip_requires, renames):
     """Translate pip package names to distro-specific package names.
 
     @param pip_requires: List of versionless pip package names to translate.
-    @param renames: Dict containg special case renames from pip name to system
-        package name for the distro.
+    @param renames: Dict containing special case renames from pip name to
+        system package name for the distro.
     """
     prefix = "python3-"
     standard_pkg_name = "{0}{1}"

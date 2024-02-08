@@ -315,7 +315,7 @@ class TestDefaults:
             get_feature_flag_value(class_client, "APT_DEB822_SOURCE_LIST_FILE")
         )
         if class_client.settings.PLATFORM == "azure":
-            sec_url = "deb http://azure.archive.ubuntu.com/ubuntu/"
+            sec_url = "http://azure.archive.ubuntu.com/ubuntu/"
         else:
             sec_url = "http://security.ubuntu.com/ubuntu"
         if feature_deb822:
@@ -335,6 +335,21 @@ class TestDefaults:
             sec_src_deb_line = sec_deb_line.replace("deb ", "# deb-src ")
             assert 3 == sources_list.count(sec_deb_line)
             assert 3 == sources_list.count(sec_src_deb_line)
+
+    def test_no_duplicate_apt_sources(self, class_client: IntegrationInstance):
+        r = class_client.execute("apt-get update", use_sudo=True)
+        assert not re.match(
+            r"^W: Target Packages .+ is configured multiple times in", r.stderr
+        )
+
+    def test_disabled_apt_sources(self, class_client: IntegrationInstance):
+        feature_deb822 = is_true(
+            get_feature_flag_value(class_client, "APT_DEB822_SOURCE_LIST_FILE")
+        )
+        if feature_deb822:
+            assert class_client.execute(
+                f"test -f {ORIG_SOURCES_FILE}"
+            ).failed, f"Found unexpected {ORIG_SOURCES_FILE}"
 
 
 DEFAULT_DATA_WITH_URI = _DEFAULT_DATA.format(
@@ -433,9 +448,15 @@ apt:
 """  # noqa: E501
 
 
+RE_GPG_SW_PROPERTIES_INSTALLED = (
+    r"install"
+    r" (gnupg software-properties-common|software-properties-common gnupg)"
+)
+
+
 @pytest.mark.skipif(not IS_UBUNTU, reason="Apt usage")
 @pytest.mark.user_data(INSTALL_ANY_MISSING_RECOMMENDED_DEPENDENCIES)
 def test_install_missing_deps(client: IntegrationInstance):
     log = client.read_from_file("/var/log/cloud-init.log")
     verify_clean_log(log)
-    assert "install gnupg software-properties-common" in log
+    assert re.search(RE_GPG_SW_PROPERTIES_INSTALLED, log)

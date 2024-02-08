@@ -232,7 +232,7 @@ represents the data collected by ``cloudinit.util.system_info``.
 
 This is a cloud-init configuration key present in :file:`/etc/cloud/cloud.cfg`
 which describes cloud-init's configured `default_user`, `distro`, `network`
-renderes, and `paths` that cloud-init will use. Not to be confused with the
+renderers, and `paths` that cloud-init will use. Not to be confused with the
 underlying host ``sys_info`` key above.
 
 ``v1``
@@ -332,8 +332,8 @@ The internal or local hostname of the system.
 
 Example output:
 
-  - ip-10-41-41-70
-  - <user-provided-hostname>
+  - ``ip-10-41-41-70``
+  - ``<user-provided-hostname>``
 
 ``v1.machine``
 ^^^^^^^^^^^^^^
@@ -462,7 +462,6 @@ EC2 instance:
      "chef",
      "mcollective",
      "salt_minion",
-     "rightscale_userdata",
      "scripts_vendor",
      "scripts_per_once",
      "scripts_per_boot",
@@ -475,7 +474,6 @@ EC2 instance:
      "power_state_change"
     ],
     "cloud_init_modules": [
-     "migrator",
      "seed_random",
      "bootcmd",
      "write_files",

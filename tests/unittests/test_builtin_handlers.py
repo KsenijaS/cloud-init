@@ -11,6 +11,7 @@ import pytest
 
 from cloudinit import atomic_helper, handlers, helpers, util
 from cloudinit.cmd.devel import read_cfg_paths
+from cloudinit.handlers.boot_hook import BootHookPartHandler
 from cloudinit.handlers.cloud_config import CloudConfigPartHandler
 from cloudinit.handlers.jinja_template import (
     JinjaLoadError,
@@ -25,6 +26,7 @@ from cloudinit.handlers.shell_script_by_frequency import (
 )
 from cloudinit.settings import PER_ALWAYS, PER_INSTANCE, PER_ONCE
 from tests.unittests.helpers import CiTestCase, mock, skipUnlessJinja
+from tests.unittests.util import FakeDataSource
 
 INSTANCE_DATA_FILE = "instance-data-sensitive.json"
 
@@ -187,7 +189,7 @@ class TestJinjaTemplatePartHandler(CiTestCase):
         instance_json = os.path.join(self.run_dir, INSTANCE_DATA_FILE)
         util.write_file(instance_json, atomic_helper.json_dumps({}))
         h = JinjaTemplatePartHandler(self.paths, sub_handlers=[script_handler])
-        with mock.patch(self.mpath + "load_file") as m_load:
+        with mock.patch(self.mpath + "load_text_file") as m_load:
             with self.assertRaises(JinjaLoadError) as context_manager:
                 m_load.side_effect = OSError(errno.EACCES, "Not allowed")
                 h.handle_part(
@@ -237,7 +239,7 @@ class TestJinjaTemplatePartHandler(CiTestCase):
             self.logs.getvalue(),
         )
         self.assertEqual(
-            "#!/bin/bash\necho himom", util.load_file(script_file)
+            "#!/bin/bash\necho himom", util.load_text_file(script_file)
         )
 
     @skipUnlessJinja()
@@ -427,3 +429,29 @@ class TestShellScriptByFrequencyHandlers:
 
     def test_get_script_folder_per_once(self):
         self.do_test_frequency(PER_ONCE)
+
+
+@pytest.mark.allow_all_subp
+@pytest.mark.usefixtures("fake_filesystem")
+class TestBootHookHandler:
+    def test_handle_part(self, paths, tmpdir, capfd):
+        paths.get_ipath = paths.get_ipath_cur
+        datasource = FakeDataSource(paths=paths)
+        handler = BootHookPartHandler(paths=paths, datasource=datasource)
+        # Setup /dev/null file for supb because no data param present
+        tmpdir.mkdir("/dev/")
+        tmpdir.join("dev/null").write("")
+        assert handler.boothook_dir == f"{tmpdir}/cloud_dir/instance/boothooks"
+        payload = f"#!/bin/sh\necho id:$INSTANCE_ID | tee {tmpdir}/boothook\n"
+        handler.handle_part(
+            data="dontcare",
+            ctype="text/cloud-boothook",
+            filename="part-001",
+            payload=payload,
+            frequency=None,
+        )
+        assert payload == util.load_text_file(
+            f"{handler.boothook_dir}/part-001"
+        )
+        assert "id:i-testing\n" == util.load_text_file(f"{tmpdir}/boothook")
+        assert "id:i-testing\n" == capfd.readouterr().out
