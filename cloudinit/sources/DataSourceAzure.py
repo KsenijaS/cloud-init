@@ -634,7 +634,7 @@ class DataSourceAzure(sources.DataSource):
         imds_md = {}
         if self._is_ephemeral_networking_up():
             try:
-                cmd = ["azure-proxy-agent", "--status", "--wait", "120"]
+                cmd = ["azure-proxy-agent", "--status", "--wait", "10"]
                 (out, err) = subp.subp(cmd, capture=True)
                 if err:
                     LOG.warning(
