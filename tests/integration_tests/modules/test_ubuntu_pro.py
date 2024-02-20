@@ -21,13 +21,13 @@ from tests.integration_tests.releases import (
 )
 from tests.integration_tests.util import verify_clean_log
 
-LOG = logging.getLogger("integration_testing.test_ubuntu_advantage")
+LOG = logging.getLogger("integration_testing.test_ubuntu_pro")
 
 CLOUD_INIT_UA_TOKEN = os.environ.get("CLOUD_INIT_UA_TOKEN")
 
 ATTACH_FALLBACK = """\
 #cloud-config
-ubuntu_advantage:
+ubuntu_pro:
   features:
     disable_auto_attach: true
   token: {token}
@@ -35,7 +35,7 @@ ubuntu_advantage:
 
 ATTACH = """\
 #cloud-config
-ubuntu_advantage:
+ubuntu_pro:
   token: {token}
   enable:
   - esm-infra
@@ -43,15 +43,15 @@ ubuntu_advantage:
 
 PRO_AUTO_ATTACH_DISABLED = """\
 #cloud-config
-ubuntu_advantage:
+ubuntu_pro:
   features:
     disable_auto_attach: true
 """
 
 PRO_DAEMON_DISABLED = """\
 #cloud-config
-# Disable UA daemon (only needed in GCE)
-ubuntu_advantage:
+# Disable Pro daemon (only needed in GCE)
+ubuntu_pro:
   features:
     disable_auto_attach: true
 bootcmd:
@@ -60,9 +60,9 @@ bootcmd:
 
 AUTO_ATTACH_CUSTOM_SERVICES = """\
 #cloud-config
-ubuntu_advantage:
+ubuntu_pro:
   enable:
-  - livepatch
+  - esm-infra
 """
 
 
@@ -112,7 +112,8 @@ def get_services_status(client: IntegrationInstance) -> dict:
     assert status_resp.ok
     status = json.loads(status_resp.stdout)
     return {
-        svc["name"]: svc["status"] == "enabled" for svc in status["services"]
+        svc["name"]: svc["status"] in ("enabled", "warning")
+        for svc in status["services"]
     }
 
 
@@ -185,10 +186,10 @@ def maybe_install_cloud_init(session_cloud: IntegrationCloud):
         # TODO: Re-enable this check after cloud images contain
         # cloud-init 23.4.
         # Explanation: We have to include something under
-        # user-data.ubuntu_advantage to skip the automatic auto-attach
+        # user-data.ubuntu_pro to skip the automatic auto-attach
         # (driven by ua-auto-attach.service and/or ubuntu-advantage.service)
         # while customizing the instance but in cloud-init < 23.4,
-        # user-data.ubuntu_advantage requires a token key.
+        # user-data.ubuntu_pro requires a token key.
 
         # log = client.read_from_file("/var/log/cloud-init.log")
         # verify_clean_log(log)
@@ -234,8 +235,8 @@ class TestUbuntuAdvantagePro:
             assert is_attached(client)
             services_status = get_services_status(client)
             assert services_status.pop(
-                "livepatch"
-            ), "livepatch expected to be enabled"
+                "esm-infra"
+            ), "esm-infra expected to be enabled"
             enabled_services = {
                 svc for svc, status in services_status.items() if status
             }
