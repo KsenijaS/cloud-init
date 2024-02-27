@@ -158,6 +158,9 @@ def _fetch_metadata(
     :raises ValueError: on error parsing metadata.
     """
     metadata = _fetch_url(url, retry_handler=retry_handler)
+    report_diagnostic_event(
+        "Fetch IMDS metadata: %r" % metadata, logger_func=LOG.info
+    )
 
     try:
         return util.load_json(metadata.decode("utf-8"))
