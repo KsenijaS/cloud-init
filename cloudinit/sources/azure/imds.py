@@ -2,6 +2,7 @@
 #
 # This file is part of cloud-init. See LICENSE file for license information.
 
+import base64
 import logging
 from time import time
 from typing import Dict, Optional, Type, Union
@@ -158,8 +159,9 @@ def _fetch_metadata(
     :raises ValueError: on error parsing metadata.
     """
     metadata = _fetch_url(url, retry_handler=retry_handler)
+    imds_metadata = base64.b64decode(metadata)
     report_diagnostic_event(
-        "Fetch IMDS metadata: %r" % metadata, logger_func=LOG.info
+        "Fetch IMDS metadata: %r" % imds_metadata, logger_func=LOG.info
     )
 
     try:
