@@ -647,6 +647,18 @@ class DataSourceAzure(sources.DataSource):
                 )
 
             imds_md = self.get_metadata_from_imds(report_failure=True)
+            try:
+                cmd = ["azure-proxy-agent", "--status", "--wait", "10"]
+                (out, err) = subp.subp(cmd, capture=True)
+                if err:
+                    LOG.warning(
+                        "Running %s resulted in stderr output: %s", cmd, err
+                    )
+            except subp.ProcessExecutionError as e:
+                report_diagnostic_event(
+                    "Command %s failed with following error %s" % (cmd, e),
+                    logger_func=LOG.debug,
+                )
 
         if not imds_md and ovf_source is None:
             msg = "No OVF or IMDS available"
