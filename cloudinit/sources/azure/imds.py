@@ -159,7 +159,7 @@ def _fetch_metadata(
     :raises ValueError: on error parsing metadata.
     """
     metadata = _fetch_url(url, retry_handler=retry_handler)
-    imds_metadata = base64.b64decode(metadata)
+    imds_metadata = base64.b64encode(metadata)
     report_diagnostic_event(
         "Fetch IMDS metadata: %r" % imds_metadata, logger_func=LOG.info
     )
