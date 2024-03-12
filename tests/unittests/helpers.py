@@ -1,4 +1,5 @@
 # This file is part of cloud-init. See LICENSE file for license information.
+# pylint: disable=attribute-defined-outside-init
 
 import functools
 import io
@@ -44,6 +45,14 @@ try:
     HAS_APT_PKG = True
 except ImportError:
     HAS_APT_PKG = False
+
+
+# Used by tests to verify the error message when a jsonschema structure
+# is empty but should not be.
+# Version 4.20.0 of jsonschema changed the error messages for empty structures.
+SCHEMA_EMPTY_ERROR = (
+    "(is too short|should be non-empty|does not have enough properties)"
+)
 
 
 # Makes the old path start

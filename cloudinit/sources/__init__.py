@@ -17,7 +17,7 @@ import pickle
 import re
 from collections import namedtuple
 from enum import Enum, unique
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from cloudinit import atomic_helper, dmi, importer, net, type_utils
 from cloudinit import user_data as ud
@@ -195,6 +195,8 @@ class DataSource(CloudInitPickleMixin, metaclass=abc.ABCMeta):
     #  - seed-dir (<dirname>)
     _subplatform = None
 
+    _crawled_metadata: Optional[Union[Dict, str]] = None
+
     # The network configuration sources that should be considered for this data
     # source.  (The first source in this list that provides network
     # configuration will be used without considering any that follow.)  This
@@ -296,6 +298,9 @@ class DataSource(CloudInitPickleMixin, metaclass=abc.ABCMeta):
     # in the updated metadata
     skip_hotplug_detect = False
 
+    # Extra udev rules for cc_install_hotplug
+    extra_hotplug_udev_rules: Optional[str] = None
+
     _ci_pkl_version = 1
 
     def __init__(self, sys_cfg, distro: Distro, paths: Paths, ud_proc=None):
@@ -309,6 +314,9 @@ class DataSource(CloudInitPickleMixin, metaclass=abc.ABCMeta):
         self.vendordata2 = None
         self.vendordata_raw = None
         self.vendordata2_raw = None
+        self.metadata_address = None
+        self.network_json = UNSET
+        self.ec2_metadata = UNSET
 
         self.ds_cfg = util.get_cfg_by_path(
             self.sys_cfg, ("datasource", self.dsname), {}
@@ -323,12 +331,22 @@ class DataSource(CloudInitPickleMixin, metaclass=abc.ABCMeta):
 
     def _unpickle(self, ci_pkl_version: int) -> None:
         """Perform deserialization fixes for Paths."""
-        if not hasattr(self, "vendordata2"):
-            self.vendordata2 = None
-        if not hasattr(self, "vendordata2_raw"):
-            self.vendordata2_raw = None
-        if not hasattr(self, "skip_hotplug_detect"):
-            self.skip_hotplug_detect = False
+        expected_attrs = {
+            "_crawled_metadata": None,
+            "_platform_type": None,
+            "_subplatform": None,
+            "ec2_metadata": UNSET,
+            "extra_hotplug_udev_rules": None,
+            "metadata_address": None,
+            "network_json": UNSET,
+            "skip_hotplug_detect": False,
+            "vendordata2": None,
+            "vendordata2_raw": None,
+        }
+        for key, value in expected_attrs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+
         if hasattr(self, "userdata") and self.userdata is not None:
             # If userdata stores MIME data, on < python3.6 it will be
             # missing the 'policy' attribute that exists on >=python3.6.
@@ -471,25 +489,19 @@ class DataSource(CloudInitPickleMixin, metaclass=abc.ABCMeta):
         """
         if write_cache and os.path.lexists(self.paths.instance_link):
             pkl_store(self, self.paths.get_ipath_cur("obj_pkl"))
-        if hasattr(self, "_crawled_metadata"):
+        if self._crawled_metadata is not None:
             # Any datasource with _crawled_metadata will best represent
             # most recent, 'raw' metadata
-            crawled_metadata = copy.deepcopy(
-                getattr(self, "_crawled_metadata")
-            )
+            crawled_metadata = copy.deepcopy(self._crawled_metadata)
             crawled_metadata.pop("user-data", None)
             crawled_metadata.pop("vendor-data", None)
             instance_data = {"ds": crawled_metadata}
         else:
             instance_data = {"ds": {"meta_data": self.metadata}}
-            if hasattr(self, "network_json"):
-                network_json = getattr(self, "network_json")
-                if network_json != UNSET:
-                    instance_data["ds"]["network_json"] = network_json
-            if hasattr(self, "ec2_metadata"):
-                ec2_metadata = getattr(self, "ec2_metadata")
-                if ec2_metadata != UNSET:
-                    instance_data["ds"]["ec2_metadata"] = ec2_metadata
+            if self.network_json != UNSET:
+                instance_data["ds"]["network_json"] = self.network_json
+            if self.ec2_metadata != UNSET:
+                instance_data["ds"]["ec2_metadata"] = self.ec2_metadata
         instance_data["ds"]["_doc"] = EXPERIMENTAL_TEXT
         # Add merged cloud.cfg and sys info for jinja templates and cli query
         instance_data["merged_cfg"] = copy.deepcopy(self.sys_cfg)
@@ -626,9 +638,6 @@ class DataSource(CloudInitPickleMixin, metaclass=abc.ABCMeta):
 
     @property
     def platform_type(self):
-        if not hasattr(self, "_platform_type"):
-            # Handle upgrade path where pickled datasource has no _platform.
-            self._platform_type = self.dsname.lower()
         if not self._platform_type:
             self._platform_type = self.dsname.lower()
         return self._platform_type
@@ -645,17 +654,14 @@ class DataSource(CloudInitPickleMixin, metaclass=abc.ABCMeta):
             nocloud:   seed-dir (/seed/dir/path)
             lxd:   nocloud (/seed/dir/path)
         """
-        if not hasattr(self, "_subplatform"):
-            # Handle upgrade path where pickled datasource has no _platform.
-            self._subplatform = self._get_subplatform()
         if not self._subplatform:
             self._subplatform = self._get_subplatform()
         return self._subplatform
 
     def _get_subplatform(self):
         """Subclasses should implement to return a "slug (detail)" string."""
-        if hasattr(self, "metadata_address"):
-            return "metadata (%s)" % getattr(self, "metadata_address")
+        if self.metadata_address:
+            return f"metadata ({self.metadata_address})"
         return METADATA_UNKNOWN
 
     @property
@@ -1190,10 +1196,13 @@ def parse_cmdline() -> str:
     """Check if command line argument for this datasource was passed
     Passing by command line overrides runtime datasource detection
     """
-    cmdline = util.get_cmdline()
-    ds_parse_0 = re.search(r"(?:^|\s)ds=([^\s;]+)", cmdline)
-    ds_parse_1 = re.search(r"(?:^|\s)ci\.ds=([^\s;]+)", cmdline)
-    ds_parse_2 = re.search(r"(?:^|\s)ci\.datasource=([^\s;]+)", cmdline)
+    return parse_cmdline_or_dmi(util.get_cmdline())
+
+
+def parse_cmdline_or_dmi(input: str) -> str:
+    ds_parse_0 = re.search(r"(?:^|\s)ds=([^\s;]+)", input)
+    ds_parse_1 = re.search(r"(?:^|\s)ci\.ds=([^\s;]+)", input)
+    ds_parse_2 = re.search(r"(?:^|\s)ci\.datasource=([^\s;]+)", input)
     ds = ds_parse_0 or ds_parse_1 or ds_parse_2
     deprecated = ds_parse_1 or ds_parse_2
     if deprecated:

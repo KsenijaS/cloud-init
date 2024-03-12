@@ -184,6 +184,18 @@ PORTS_MIRRORS = {
 PRIMARY_ARCHES = ["amd64", "i386"]
 PORTS_ARCHES = ["s390x", "arm64", "armhf", "powerpc", "ppc64el", "riscv64"]
 
+UBUNTU_DEFAULT_APT_SOURCES_LIST = """\
+# Ubuntu sources have moved to the /etc/apt/sources.list.d/ubuntu.sources
+# file, which uses the deb822 format. Use deb822-formatted .sources files
+# to manage package sources in the /etc/apt/sources.list.d/ directory.
+# See the sources.list(5) manual page for details.
+"""
+
+# List of allowed content in /etc/apt/sources.list when features
+# APT_DEB822_SOURCE_LIST_FILE is set. Otherwise issue warning about
+# invalid non-deb822 configuration.
+DEB822_ALLOWED_APT_SOURCES_LIST = {"ubuntu": UBUNTU_DEFAULT_APT_SOURCES_LIST}
+
 
 def get_default_mirrors(
     arch=None,
@@ -274,7 +286,17 @@ def apply_apt(cfg, cloud):
     # GH: 4344 - stop gpg-agent/dirmgr daemons spawned by gpg key imports.
     # Daemons spawned by cloud-config.service on systemd v253 report (running)
     gpg_process_out, _err = subp.subp(
-        ["ps", "-o", "ppid,pid", "-C", "dirmngr", "-C", "gpg-agent"],
+        [
+            "ps",
+            "-o",
+            "ppid,pid",
+            "-C",
+            "keyboxd",
+            "-C",
+            "dirmngr",
+            "-C",
+            "gpg-agent",
+        ],
         capture=True,
         rcs=[0, 1],
     )
@@ -681,10 +703,23 @@ def generate_sources_list(cfg, release, mirrors, cloud):
     disabled = disable_suites(cfg.get("disable_suites"), rendered, release)
     util.write_file(aptsrc_file, disabled, mode=0o644)
     if aptsrc_file == apt_sources_deb822 and os.path.exists(apt_sources_list):
-        LOG.warning(
-            "Removing %s to favor deb822 source format", apt_sources_list
+        expected_content = DEB822_ALLOWED_APT_SOURCES_LIST.get(
+            cloud.distro.name
         )
-        util.del_file(apt_sources_list)
+        if expected_content:
+            if expected_content != util.load_text_file(apt_sources_list):
+                LOG.info(
+                    "Replacing %s to favor deb822 source format",
+                    apt_sources_list,
+                )
+                util.write_file(
+                    apt_sources_list, UBUNTU_DEFAULT_APT_SOURCES_LIST
+                )
+        else:
+            LOG.info(
+                "Removing %s to favor deb822 source format", apt_sources_list
+            )
+            util.del_file(apt_sources_list)
 
 
 def add_apt_key_raw(key, file_name, hardened=False):
