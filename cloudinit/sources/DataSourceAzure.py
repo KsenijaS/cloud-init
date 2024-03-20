@@ -633,18 +633,21 @@ class DataSourceAzure(sources.DataSource):
 
         imds_md = {}
         if self._is_ephemeral_networking_up():
-            try:
-                cmd = ["azure-proxy-agent", "--status", "--wait", "120"]
-                (out, err) = subp.subp(cmd, capture=True)
-                if err:
-                    LOG.warning(
-                        "Running %s resulted in stderr output: %s", cmd, err
+            if cfg["ProvisionGuestProxyAgent"]:
+                try:
+                    cmd = ["azure-proxy-agent", "--status", "--wait", "120"]
+                    (out, err) = subp.subp(cmd, capture=True)
+                    if err:
+                        LOG.warning(
+                            "Running %s resulted in stderr output: %s",
+                            cmd,
+                            err,
+                        )
+                except subp.ProcessExecutionError as e:
+                    report_diagnostic_event(
+                        "Command %s failed with following error %s" % (cmd, e),
+                        logger_func=LOG.debug,
                     )
-            except subp.ProcessExecutionError as e:
-                report_diagnostic_event(
-                    "Command %s failed with following error %s" % (cmd, e),
-                    logger_func=LOG.debug,
-                )
 
             imds_md = self.get_metadata_from_imds(report_failure=True)
             try:
