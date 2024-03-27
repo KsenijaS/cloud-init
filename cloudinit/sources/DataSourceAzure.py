@@ -211,7 +211,7 @@ def determine_device_driver_for_mac(mac: str) -> Optional[str]:
 
 def execute_or_debug(cmd, fail_ret=None) -> str:
     try:
-        return subp.subp(cmd).stdout  # pyright: ignore
+        return sub.subp(cmd).stdout  # pyright: ignore
     except subp.ProcessExecutionError:
         LOG.debug("Failed to execute: %s", " ".join(cmd))
         return fail_ret
@@ -637,6 +637,11 @@ class DataSourceAzure(sources.DataSource):
                 try:
                     cmd = ["azure-proxy-agent", "--status", "--wait", "120"]
                     (out, err) = subp.subp(cmd, capture=True)
+                    report_diagnostic_event(
+                        "Running azure-proxy-agent",
+                        logger_func=LOG.info,
+                    )
+                    err = False
                     if err:
                         LOG.warning(
                             "Running %s resulted in stderr output: %s",
@@ -650,18 +655,6 @@ class DataSourceAzure(sources.DataSource):
                     )
 
             imds_md = self.get_metadata_from_imds(report_failure=True)
-            try:
-                cmd = ["azure-proxy-agent", "--status", "--wait", "120"]
-                (out, err) = subp.subp(cmd, capture=True)
-                if err:
-                    LOG.warning(
-                        "Running %s resulted in stderr output: %s", cmd, err
-                    )
-            except subp.ProcessExecutionError as e:
-                report_diagnostic_event(
-                    "Command %s failed with following error %s" % (cmd, e),
-                    logger_func=LOG.debug,
-                )
 
         if not imds_md and ovf_source is None:
             msg = "No OVF or IMDS available"

@@ -1021,6 +1021,7 @@ class TestNetworkConfig:
 
 class TestAzureDataSource(CiTestCase):
     with_logs = True
+    allowed_subp = True
 
     def setUp(self):
         super(TestAzureDataSource, self).setUp()
@@ -1228,6 +1229,19 @@ scbus-1 on xpt0 bus 0
         if ret:
             dsrc.setup(True)
         return ret
+
+    # M_PATH = "cloudinit.sources.DataSourceAzure."
+    # @mock.patch(M_PATH + "subp.subp")
+    def test_azure_proxy_agent_run(self):
+        data = {
+            "ovfcontent": construct_ovf_env(provision_guest_proxy_agent=True),
+        }
+        dsrc = self._get_ds(data)
+        # dsrc.crawl_metadata()
+        # with mock.patch.object(dsrc, "crawl_metadata") as m_crawl_metadata:
+        dsrc.crawl_metadata()
+        self.assertIn("Running", self.logs.getvalue())
+        # self.assert "Running" == self.logs.getvalue()
 
     def xml_equals(self, oxml, nxml):
         """Compare two sets of XML to make sure they are equal"""
@@ -4485,6 +4499,22 @@ class TestProvisioning:
         # Verify reports via KVP.
         assert len(self.mock_kvp_report_failure_to_host.mock_calls) == 1
         assert len(self.mock_kvp_report_success_to_host.mock_calls) == 0
+
+    def test_azure_proxy_agent_run(self, caplog):
+        data = {
+            "ovfcontent": construct_ovf_env(provision_guest_proxy_agent=True),
+        }
+        paths = helpers.Paths({})
+        distro_cls = distros.fetch("ubuntu")
+        distro = distro_cls("ubuntu", data, paths)
+        seed_dir = os.path.join(paths.seed_dir, "azure")
+        populate_dir(seed_dir, {"ovf-env.xml": data["ovfcontent"]})
+        dsrc = dsaz.DataSourceAzure(
+            data.get("sys_cfg", {}), distro=distro, paths=paths
+        )
+        dsrc.crawl_metadata()
+        self.assertEqual(1, m_crawl_metadata.call_count)
+        assert "Running" == caplog.text
 
 
 class TestGetMetadataFromImds:
