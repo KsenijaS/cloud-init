@@ -467,6 +467,12 @@ class DataSourceAzure(sources.DataSource):
                         ),
                         host_only=True,
                     )
+                except FileNotFoundError as error:
+                    report_diagnostic_event(
+                        "Failed to find network device driver %r" % error,
+                        logger_func=LOG.error,
+                    )
+                    raise error
                 except subp.ProcessExecutionError as error:
                     # udevadm settle, ip link set dev eth0 up, etc.
                     report_diagnostic_event(
@@ -683,6 +689,11 @@ class DataSourceAzure(sources.DataSource):
             self._setup_ephemeral_networking(timeout_minutes=timeout_minutes)
         except NoDHCPLeaseError:
             pass
+        except RuntimeError:
+            report_diagnostic_event(
+                "dhcp context missing ephipv4", logger_func=LOG.error
+            )
+            raise
 
         imds_md = {}
         if self._is_ephemeral_networking_up():
@@ -911,6 +922,9 @@ class DataSourceAzure(sources.DataSource):
         try:
             crawled_data = self.crawl_metadata()
         except errors.ReportableError as error:
+            self._report_failure(error)
+            return False
+        except sources.InvalidMetaDataException as error:
             self._report_failure(error)
             return False
         except Exception as error:
@@ -1415,7 +1429,13 @@ class DataSourceAzure(sources.DataSource):
         :returns: List of SSH keys, if requested.
         """
         report_dmesg_to_kvp()
-        kvp.report_success_to_host()
+        try:
+            kvp.report_success_to_host()
+        except RuntimeError as e:
+            report_diagnostic_event(
+                "Failed to read system-uuid", logger_func=LOG.error
+            )
+            raise
 
         try:
             data = get_metadata_from_fabric(

@@ -3406,11 +3406,30 @@ class TestEphemeralNetworking:
         assert azure_ds._wireserver_endpoint == "168.63.129.16"
         assert azure_ds._ephemeral_dhcp_ctx.iface == lease["interface"]
 
+    def test_no_retry_missing_driver(
+        self,
+        azure_ds,
+        caplog,
+        mock_ephemeral_dhcp_v4
+    ):
+        mock_ephemeral_dhcp_v4.return_value.obtain_lease.side_effect = [       
+            FileNotFoundError     
+        ]
+
+        with pytest.raises(FileNotFoundError):
+            azure_ds._setup_ephemeral_networking()
+
+        assert (
+            mock_ephemeral_dhcp_v4.return_value.mock_calls
+            == [mock.call.obtain_lease()]
+        )
+        assert "Failed to find network device driver" in caplog.text
+
+
     def test_no_retry_missing_dhclient_error(
         self,
         azure_ds,
-        mock_ephemeral_dhcp_v4,
-        mock_sleep,
+        mock_ephemeral_dhcp_v4
     ):
         mock_ephemeral_dhcp_v4.return_value.obtain_lease.side_effect = [
             dhcp.NoDHCPLeaseMissingDhclientError
