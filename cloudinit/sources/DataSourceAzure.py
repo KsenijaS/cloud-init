@@ -467,12 +467,6 @@ class DataSourceAzure(sources.DataSource):
                         ),
                         host_only=True,
                     )
-                except FileNotFoundError as error:
-                    report_diagnostic_event(
-                        "Failed to find network device driver %r" % error,
-                        logger_func=LOG.error,
-                    )
-                    raise error
                 except subp.ProcessExecutionError as error:
                     # udevadm settle, ip link set dev eth0 up, etc.
                     report_diagnostic_event(
@@ -486,6 +480,9 @@ class DataSourceAzure(sources.DataSource):
                         ),
                         logger_func=LOG.error,
                     )
+                except Exception as error:
+                    reportable_error = errors.ReportableErrorUnhandledException(error)
+                    self._report_failure(reportable_error)
 
                 # Sleep before retrying, otherwise break if past deadline.
                 if lease is None and monotonic() + retry_sleep < deadline:
